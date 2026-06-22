@@ -14,6 +14,7 @@ const { swaggerUi, swaggerSpec, setupSwaggerUi, setupSwaggerJson } = require('./
 // Create Express App
 const app = express();
 const PORT = process.env.PORT || 8000;
+let server;
 
 // Database Connection + Seed + Vector Sync + Server Start
 mongoose
@@ -51,7 +52,7 @@ mongoose
     }
 
     // 3. Start Express server
-    app.listen(PORT, '0.0.0.0', () => {
+    server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server ready on port ${PORT}.`);
     });
   })
@@ -64,6 +65,20 @@ mongoose
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Kubernetes health check endpoints
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+app.get('/readyz', (req, res) => {
+  const mongoReady = mongoose.connection.readyState === 1;
+  if (mongoReady) {
+    res.status(200).json({ status: 'ready', mongo: 'connected' });
+  } else {
+    res.status(503).json({ status: 'not ready', mongo: 'disconnected' });
+  }
+});
 
 // Redirect root to /api-docs
 app.get('/', (req, res) => {
@@ -82,3 +97,25 @@ app.use('/api/search', require('./routes/search'));
 app.use('/api/auth', authRoutes);
 
 module.exports = app;
+
+// Graceful shutdown for Kubernetes SIGTERM
+const shutdown = (signal) => {
+  console.log(`\n${signal} received. Shutting down gracefully...`);
+  if (server) {
+    server.close(() => {
+      console.log('HTTP server closed');
+      mongoose.connection.close(false).then(() => {
+        console.log('MongoDB connection closed');
+        process.exit(0);
+      });
+    });
+  }
+  // Force exit after 30s if graceful shutdown stalls
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 30000);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

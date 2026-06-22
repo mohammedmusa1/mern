@@ -1,0 +1,35 @@
+[project]
+  id      = "fusion-electronics-backend"
+  version = "1.1.1"
+  name    = "Fusion Electronics Backend"
+
+[build]
+  # Files/dirs to exclude from the build container (keeps image lean)
+  exclude = [
+    "node_modules",
+    "__tests__",
+    "faiss_stores",
+    "*.sh",
+    "*.md",
+    "Dockerfile",
+    "publish.sh",
+    "push.sh",
+    "faiss.sh",
+  ]
+
+# --- Build-time environment ---
+
+[[build.env]]
+  name  = "NODE_ENV"
+  value = "production"
+
+[[build.env]]
+  name  = "NPM_CONFIG_LOGLEVEL"
+  value = "warn"
+
+# Paketo: explicitly run NO npm scripts during build phase.
+# Google Buildpacks: skips build automatically when no "build" script exists.
+# This is a safety belt — ensures neither builder ever tries to start the app.
+[[build.env]]
+  name  = "BP_NODE_RUN_SCRIPTS"
+  value = ""

@@ -1,0 +1,26 @@
+[project]
+  id = "fusion-electronics-frontend"
+  name = "Fusion Electronics Frontend"
+  version = "1.1.0"
+
+[build]
+  # Exclude unnecessary files and backend from the frontend build context
+  exclude = [
+    "backend",
+    "docs",
+    ".idea",
+    "*.md",
+    "docker-compose.yml",
+    "Dockerfile",
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "CLAUDE.md"
+  ]
+
+[[build.env]]
+  name = "NPM_CONFIG_LOGLEVEL"
+  value = "warn"
+
+[[build.env]]
+  name = "NODE_ENV"
+  value = "production"
