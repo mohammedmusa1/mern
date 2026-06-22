@@ -32,7 +32,6 @@ const REQUIRED_ENV = ['MONGO_URI', 'JWT_SECRET'];
 const missingEnv = REQUIRED_ENV.filter(key => !process.env[key]);
 if (missingEnv.length > 0) {
   console.error(`[FATAL] Missing required environment variables: ${missingEnv.join(', ')}`);
-  process.exit(1);
 }
 
 const app = express();
@@ -136,8 +135,9 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 module.exports = app;
 
 // ── Database Connection + Startup ─────────────────────────────────────────────
+const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/Ecommerce-Products';
 mongoose
-  .connect(process.env.MONGO_URI)
+  .connect(mongoUri)
   .then(async () => {
     console.log('[DB] MongoDB Connected');
 
@@ -165,13 +165,15 @@ mongoose
       console.warn('[Pinecone] Sync failed (continuing with fallbacks):', err.message);
     }
 
-    server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`[Server] Ready on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
-    });
+    // Only app.listen if not in a serverless environment
+    if (!process.env.VERCEL) {
+      server = app.listen(PORT, '0.0.0.0', () => {
+        console.log(`[Server] Ready on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
+      });
+    }
   })
   .catch(err => {
     console.error('[DB] MongoDB connection error:', err.message);
-    process.exit(1);
   });
 
 // ── Graceful Shutdown ──────────────────────────────────────────────────────────
