@@ -1,4 +1,5 @@
 const swaggerJSDoc = require('swagger-jsdoc');
+const path = require('path');
 
 // Swagger definition
 const swaggerDefinition = {
@@ -19,20 +20,8 @@ const swaggerDefinition = {
       url: 'https://opensource.org/licenses/MIT',
     },
   },
-  servers: [
-    {
-      url: 'https://fusion-electronics-api.vercel.app',
-      description: 'Production server',
-    },
-    {
-      url: 'https://mern-stack-ecommerce-app-h5wb.onrender.com',
-      description: 'Production (backup) server',
-    },
-    {
-      url: 'http://localhost:8000',
-      description: 'Development server',
-    },
-  ],
+  },
+  // Servers are omitted so Swagger UI defaults to the current host dynamically.
   components: {
     securitySchemes: {
       BearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
@@ -101,7 +90,7 @@ const swaggerDefinition = {
 // Options for the swagger docs
 const options = {
   swaggerDefinition,
-  apis: ['./routes/*.js'],
+  apis: [path.join(__dirname, '../routes/*.js')],
 };
 
 // Initialize swagger-jsdoc
