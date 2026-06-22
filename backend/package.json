@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@pinecone-database/pinecone": "^1.1.2",
     "axios": "^1.7.2",
     "bcryptjs": "^2.4.3",
     "compression": "^1.8.1",
@@ -49,7 +50,6 @@
     "express": "^4.19.2",
     "express-rate-limit": "^8.5.2",
     "express-validator": "^7.2.0",
-    "faiss-node": "^0.5.1",
     "helmet": "^8.2.0",
     "http-proxy-middleware": "^3.0.0",
     "jsonwebtoken": "^9.0.2",
@@ -61,6 +61,9 @@
     "weaviate-client": "^3.6.2",
     "weaviate-ts-client": "^2.2.0"
   },
+  "optionalDependencies": {
+    "faiss-node": "^0.5.1"
+  },
   "devDependencies": {
     "exit-x": "^0.2.2",
     "jest": "^30.0.4",
@@ -69,6 +72,6 @@
     "supertest": "^7.1.1"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "20.x"
   }
 }

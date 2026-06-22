@@ -6,11 +6,9 @@ const resolveBaseURL = () => {
     return envUrl.replace(/\/$/, '');
   }
 
-  if (process.env.REACT_APP_API_USE_PROXY === 'true') {
-    return '/api';
-  }
-
-  return 'https://fusion-electronics-api.vercel.app/api';
+  // In production on Vercel, the backend is on the same domain at /api
+  // In local development, the proxy in setupProxy.js handles /api -> localhost:8000
+  return '/api';
 };
 
 export const API_BASE_URL = resolveBaseURL();
