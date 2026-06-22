@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: fusion
+bases:
+  - ../../base
+patches: []
+images:
+  - name: 889384901938.dkr.ecr.us-east-1.amazonaws.com/fusion/backend
+    newTag: "latest"
+  - name: 889384901938.dkr.ecr.us-east-1.amazonaws.com/fusion/frontend
+    newTag: "latest"
