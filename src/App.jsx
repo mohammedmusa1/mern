@@ -22,6 +22,7 @@ import Privacy from './pages/Privacy';
 import ShippingReturns from './pages/ShippingReturns';
 import OrderTracking from './pages/OrderTracking';
 import ScrollToTop from './components/ScrollToTop';
+import ProtectedRoute from './components/ProtectedRoute';
 import { apiClient, withRetry } from './services/apiClient';
 import { useNotifier } from './context/NotificationProvider';
 
@@ -227,9 +228,23 @@ function App() {
 
               <Route path="/cart" element={<Cart cart={cart} setCart={setCart} />} />
 
-              <Route path="/checkout" element={<Checkout cartItems={cart} onOrderComplete={handleOrderComplete} />} />
+              <Route
+                path="/checkout"
+                element={
+                  <ProtectedRoute>
+                    <Checkout cartItems={cart} onOrderComplete={handleOrderComplete} />
+                  </ProtectedRoute>
+                }
+              />
 
-              <Route path="/order-success" element={<OrderSuccess />} />
+              <Route
+                path="/order-success"
+                element={
+                  <ProtectedRoute>
+                    <OrderSuccess />
+                  </ProtectedRoute>
+                }
+              />
 
               <Route path="/product/:id" element={<ProductDetails addToCart={addToCart} />} />
 

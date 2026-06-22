@@ -64,29 +64,29 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  *         description: Validation error
  */
 
-router.post('/track', async (req, res) => {
+router.post('/track', async (req, res, next) => {
   try {
     const { orderNumber, email } = req.body || {};
 
     if (!orderNumber || !email) {
-      return res.status(400).json({ error: 'Order number and email are required.' });
+      return res.status(400).json({ status: 'error', message: 'Order number and email are required.' });
     }
 
     const normalizedOrderNumber = String(orderNumber).trim().toUpperCase();
     const normalizedEmail = String(email).trim().toLowerCase();
 
     if (!normalizedOrderNumber.startsWith('FE-')) {
-      return res.status(400).json({ error: 'Invalid order number format.' });
+      return res.status(400).json({ status: 'error', message: 'Invalid order number format.' });
     }
 
     if (!emailRegex.test(normalizedEmail)) {
-      return res.status(400).json({ error: 'Invalid email format.' });
+      return res.status(400).json({ status: 'error', message: 'Invalid email format.' });
     }
 
     const order = await Order.findOne({ orderNumber: normalizedOrderNumber, email: normalizedEmail });
 
     if (!order) {
-      return res.status(404).json({ error: 'Order not found. Double-check your email and order number.' });
+      return res.status(404).json({ status: 'error', message: 'Order not found. Double-check your email and order number.' });
     }
 
     order.ensureInitialStatus();
@@ -106,6 +106,7 @@ router.post('/track', async (req, res) => {
     await order.save();
 
     const responsePayload = {
+      status: 'success',
       orderNumber: order.orderNumber,
       email: order.email,
       currentStatus: order.statusHistory[order.statusHistory.length - 1],
@@ -119,9 +120,8 @@ router.post('/track', async (req, res) => {
     };
 
     res.json(responsePayload);
-  } catch (error) {
-    console.error('Error tracking order:', error);
-    res.status(500).json({ error: 'Unable to fetch order status right now.' });
+  } catch (err) {
+    next(err);
   }
 });
 

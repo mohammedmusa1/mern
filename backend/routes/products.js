@@ -389,18 +389,13 @@ const pineconeGroupRecommendations = async (products, limit = 10) => {
  *               items:
  *                 $ref: '#/components/schemas/Product'
  */
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
-    const products = await Product.find();
-
-    const formattedProducts = products.map(product => ({
-      ...product.toObject(),
-      id: product._id,
-    }));
-
+    const products = await Product.find().lean();
+    const formattedProducts = products.map(product => ({ ...product, id: product._id }));
     res.json(formattedProducts);
   } catch (err) {
-    res.status(500).send('Server error');
+    next(err);
   }
 });
 
@@ -431,11 +426,11 @@ router.get('/', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.get('/:id/similar', async (req, res) => {
+router.get('/:id/similar', async (req, res, next) => {
   try {
     const prod = await Product.findById(req.params.id).lean();
     if (!prod) {
-      return res.status(404).json({ message: 'Product not found' });
+      return res.status(404).json({ status: 'error', message: 'Product not found' });
     }
 
     let recommendations = await pineconeSimilarRecommendations(prod, 5);
@@ -445,8 +440,7 @@ router.get('/:id/similar', async (req, res) => {
 
     res.json(recommendations);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    next(err);
   }
 });
 
@@ -484,16 +478,16 @@ router.get('/:id/similar', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.post('/recommendations', async (req, res) => {
+router.post('/recommendations', async (req, res, next) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({ message: 'Request body must have a non-empty array of ids' });
+      return res.status(400).json({ status: 'error', message: 'Request body must have a non-empty array of ids' });
     }
 
     const docs = await Product.find({ _id: { $in: ids } }).lean();
     if (docs.length === 0) {
-      return res.status(400).json({ message: 'No products found for provided ids' });
+      return res.status(400).json({ status: 'error', message: 'No products found for provided ids' });
     }
 
     let recommendations = await pineconeGroupRecommendations(docs, 10);
@@ -503,8 +497,7 @@ router.post('/recommendations', async (req, res) => {
 
     res.json(recommendations);
   } catch (err) {
-    console.error('Error in /recommendations:', err);
-    res.status(500).json({ message: 'Server error' });
+    next(err);
   }
 });
 
@@ -531,15 +524,15 @@ router.post('/recommendations', async (req, res) => {
  *       404:
  *         description: Product not found
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req, res, next) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id).lean();
     if (!product) {
-      return res.status(404).send('Product not found');
+      return res.status(404).json({ status: 'error', message: 'Product not found' });
     }
-    res.json(product);
+    res.json({ ...product, id: product._id });
   } catch (err) {
-    res.status(500).send('Server error');
+    next(err);
   }
 });
 
@@ -566,12 +559,12 @@ router.get('/:id', async (req, res) => {
  *               items:
  *                 $ref: '#/components/schemas/Product'
  */
-router.get('/category/:category', async (req, res) => {
+router.get('/category/:category', async (req, res, next) => {
   try {
-    const products = await Product.find({ category: req.params.category });
+    const products = await Product.find({ category: req.params.category }).lean();
     res.json(products);
   } catch (err) {
-    res.status(500).send('Server error');
+    next(err);
   }
 });
 
@@ -608,28 +601,28 @@ router.get('/category/:category', async (req, res) => {
  *       404:
  *         description: Product not found
  */
-router.put('/:id/rating', async (req, res) => {
+router.put('/:id/rating', async (req, res, next) => {
   try {
     const { rating } = req.body;
-    const product = await Product.findById(req.params.id);
-
-    if (!product) {
-      return res.status(404).send('Product not found');
+    const parsed = parseFloat(rating);
+    if (isNaN(parsed) || parsed < 0 || parsed > 5) {
+      return res.status(400).json({ status: 'error', message: 'Rating must be a number between 0 and 5' });
     }
 
-    // Calculate new average rating
-    const newNumReviews = product.numReviews + 1;
-    const newRatingSum = product.rating * product.numReviews + rating;
-    const newAverageRating = newRatingSum / newNumReviews;
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ status: 'error', message: 'Product not found' });
+    }
 
-    // Update product with the new average rating and review count
-    product.rating = newAverageRating;
+    const newNumReviews = product.numReviews + 1;
+    const newRatingSum = product.rating * product.numReviews + parsed;
+    product.rating = newRatingSum / newNumReviews;
     product.numReviews = newNumReviews;
 
     await product.save();
-    res.json(product);
+    res.json({ ...product.toObject(), id: product._id });
   } catch (err) {
-    res.status(500).send('Server error');
+    next(err);
   }
 });
 

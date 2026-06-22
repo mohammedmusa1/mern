@@ -1,49 +1,68 @@
-version: '3.8'
-
 services:
   mongodb:
     image: mongo:6.0
     container_name: fusion-mongodb
-    restart: always
+    restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
     environment:
-      - MONGO_INITDB_DATABASE=Ecommerce-Products
+      - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE:-Ecommerce-Products}
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME:-}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-}
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: fusion-backend
-    restart: always
+    restart: unless-stopped
     ports:
       - "8000:8000"
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
     environment:
       - PORT=8000
-      - MONGO_URI=mongodb://mongodb:27017/Ecommerce-Products
-      - JWT_SECRET=${JWT_SECRET:-supersecretkey}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
-      - PINECONE_HOST=${PINECONE_HOST}
-      - PINECONE_INDEX=${PINECONE_INDEX}
-      - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY}
-      - SKIP_SEED_ON_START=true
+      - NODE_ENV=production
+      - MONGO_URI=${MONGO_URI:-mongodb://mongodb:27017/Ecommerce-Products}
+      - SKIP_SEED_ON_START=${SKIP_SEED_ON_START:-true}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        - REACT_APP_API_BASE_URL=http://3.91.38.23:8000/api
+        - REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL:-/api}
     container_name: fusion-frontend
-    restart: always
+    restart: unless-stopped
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   mongodb_data:
+    driver: local

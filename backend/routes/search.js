@@ -2,12 +2,15 @@ const express = require('express');
 const router = express.Router();
 const Product = require('../models/product');
 
+// Escape special regex characters to prevent NoSQL injection via regex
+const escapeRegex = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * @swagger
  * /api/search:
  *   get:
  *     summary: Search for products
- *     description: Retrieve a list of products that match the provided search query in their name or description. If no query is provided, it returns all products.
+ *     description: Search by name or description. Returns all products if no query given.
  *     tags:
  *       - Search
  *     parameters:
@@ -16,64 +19,34 @@ const Product = require('../models/product');
  *         schema:
  *           type: string
  *         required: false
- *         description: The search query to match against product names or descriptions.
+ *         description: Search query
  *     responses:
  *       200:
- *         description: A list of products matching the search query.
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   _id:
- *                     type: string
- *                     description: The unique identifier for the product.
- *                   name:
- *                     type: string
- *                     description: The name of the product.
- *                   description:
- *                     type: string
- *                     description: The description of the product.
- *                   price:
- *                     type: number
- *                     format: float
- *                     description: The price of the product.
- *                   category:
- *                     type: string
- *                     description: The category of the product.
- *                   createdAt:
- *                     type: string
- *                     format: date-time
- *                     description: The date the product was created.
- *                   updatedAt:
- *                     type: string
- *                     format: date-time
- *                     description: The date the product was last updated.
+ *         description: Matching products
  *       500:
- *         description: An internal server error occurred.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   description: A message describing the error.
+ *         description: Server error
  */
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
-    const query = req.query.q;
+    const raw = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+
+    if (!raw) {
+      const all = await Product.find().lean();
+      return res.json(all);
+    }
+
+    const safe = escapeRegex(raw);
+    const regex = new RegExp(safe, 'i');
 
     const products = await Product.find({
-      $or: [{ name: { $regex: query, $options: 'i' } }, { description: { $regex: query, $options: 'i' } }],
-    });
+      $or: [{ name: { $regex: regex } }, { description: { $regex: regex } }],
+    })
+      .limit(100)
+      .lean();
 
     res.json(products);
-  } catch (error) {
-    console.error('Error searching products:', error);
-    res.status(500).json({ error: 'An error occurred during the search.' });
+  } catch (err) {
+    next(err);
   }
 });
 

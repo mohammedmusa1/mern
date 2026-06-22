@@ -3,39 +3,16 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { check, validationResult } = require('express-validator');
 const User = require('../models/user');
+
 const router = express.Router();
 
-const JWT_SECRET = process.env.JWT_SECRET;
-
-/**
- * @swagger
- * components:
- *   schemas:
- *     User:
- *       type: object
- *       required:
- *         - name
- *         - email
- *         - password
- *       properties:
- *         id:
- *           type: string
- *           description: The auto-generated ID of the user
- *         name:
- *           type: string
- *           description: The user's name
- *         email:
- *           type: string
- *           description: The user's email
- *         password:
- *           type: string
- *           description: The user's hashed password
- *       example:
- *         id: 60c72b2f5f1b2c0012a4c56e
- *         name: John Doe
- *         email: john@example.com
- *         password: password123
- */
+const signToken = (payload, secret, options) =>
+  new Promise((resolve, reject) => {
+    jwt.sign(payload, secret, options, (err, token) => {
+      if (err) reject(err);
+      else resolve(token);
+    });
+  });
 
 /**
  * @swagger
@@ -49,81 +26,55 @@ const JWT_SECRET = process.env.JWT_SECRET;
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [name, email, password]
  *             properties:
  *               name:
  *                 type: string
- *                 description: User's name
  *               email:
  *                 type: string
- *                 description: User's email
  *               password:
  *                 type: string
- *                 description: User's password
- *             example:
- *               name: John Doe
- *               email: john@example.com
- *               password: password123
  *     responses:
- *       200:
- *         description: User registered and JWT token returned (expires in 24 hours)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 token:
- *                   type: string
- *                   description: JWT token for user authentication
+ *       201:
+ *         description: User registered successfully
  *       400:
- *         description: Bad request - Validation error or user already exists
+ *         description: Validation error or user already exists
  *       500:
  *         description: Server error
  */
 router.post(
   '/register',
   [
-    check('name', 'Name is required').not().isEmpty(),
-    check('email', 'Please include a valid email').isEmail(),
-    check('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 }),
+    check('name', 'Name is required').notEmpty().trim(),
+    check('email', 'Please include a valid email').isEmail().normalizeEmail(),
+    check('password', 'Password must be at least 6 characters').isLength({ min: 6 }),
   ],
-  async (req, res) => {
+  async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({ status: 'error', errors: errors.array() });
     }
 
     const { name, email, password } = req.body;
 
     try {
-      let user = await User.findOne({ email });
-      if (user) {
-        return res.status(400).json({ msg: 'User already exists' });
+      const existing = await User.findOne({ email });
+      if (existing) {
+        return res.status(400).json({ status: 'error', message: 'User already exists' });
       }
 
-      user = new User({
-        name,
-        email,
-        password,
+      const salt = await bcrypt.genSalt(12);
+      const hashed = await bcrypt.hash(password, salt);
+
+      const user = await User.create({ name, email: email.toLowerCase(), password: hashed });
+
+      const token = await signToken({ user: { id: user.id } }, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRE || '48h',
       });
 
-      const salt = await bcrypt.genSalt(10);
-      user.password = await bcrypt.hash(password, salt);
-
-      await user.save();
-
-      const payload = {
-        user: {
-          id: user.id,
-        },
-      };
-
-      jwt.sign(payload, JWT_SECRET, { expiresIn: '48h' }, (err, token) => {
-        if (err) throw err;
-        res.json({ token });
-      });
+      res.status(201).json({ status: 'success', token });
     } catch (err) {
-      console.error(err.message);
-      res.status(500).send('Server error');
+      next(err);
     }
   }
 );
@@ -132,7 +83,7 @@ router.post(
  * @swagger
  * /api/auth/login:
  *   post:
- *     summary: Authenticate a user and return a JWT token
+ *     summary: Authenticate a user
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -140,68 +91,55 @@ router.post(
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [email, password]
  *             properties:
  *               email:
  *                 type: string
- *                 description: User's email
  *               password:
  *                 type: string
- *                 description: User's password
- *             example:
- *               email: john@example.com
- *               password: password123
  *     responses:
  *       200:
- *         description: User authenticated and JWT token returned (expires in 24 hours)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 token:
- *                   type: string
- *                   description: JWT token for user authentication
+ *         description: Authenticated successfully
  *       400:
- *         description: Invalid credentials or validation error
+ *         description: Invalid credentials
  *       500:
  *         description: Server error
  */
-router.post('/login', [check('email', 'Please include a valid email').isEmail(), check('password', 'Password is required').exists()], async (req, res) => {
-  const errors = validationResult(req);
-
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  const { email, password } = req.body;
-
-  try {
-    let user = await User.findOne({ email });
-
-    if (!user) {
-      return res.status(400).json({ msg: 'Invalid credentials' });
+router.post(
+  '/login',
+  [
+    check('email', 'Please include a valid email').isEmail().normalizeEmail(),
+    check('password', 'Password is required').notEmpty(),
+  ],
+  async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ status: 'error', errors: errors.array() });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ msg: 'Invalid credentials' });
+    const { email, password } = req.body;
+
+    try {
+      const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+      if (!user) {
+        return res.status(400).json({ status: 'error', message: 'Invalid credentials' });
+      }
+
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ status: 'error', message: 'Invalid credentials' });
+      }
+
+      const token = await signToken({ user: { id: user.id } }, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRE || '48h',
+      });
+
+      res.json({ status: 'success', token });
+    } catch (err) {
+      next(err);
     }
-
-    const payload = {
-      user: {
-        id: user.id,
-      },
-    };
-
-    jwt.sign(payload, JWT_SECRET, { expiresIn: '48h' }, (err, token) => {
-      if (err) throw err;
-      res.json({ token });
-    });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
   }
-});
+);
 
 /**
  * @swagger
@@ -215,42 +153,38 @@ router.post('/login', [check('email', 'Please include a valid email').isEmail(),
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [email]
  *             properties:
  *               email:
  *                 type: string
- *                 description: User's email to verify
- *             example:
- *               email: john@example.com
  *     responses:
  *       200:
- *         description: Email exists and is valid for password reset
+ *         description: Email exists
  *       400:
- *         description: Invalid email or user not found
+ *         description: User not found
  *       500:
  *         description: Server error
  */
-router.post('/verify-email', [check('email', 'Please include a valid email').isEmail()], async (req, res) => {
-  const errors = validationResult(req);
-
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  const { email } = req.body;
-
-  try {
-    let user = await User.findOne({ email });
-
-    if (!user) {
-      return res.status(400).json({ msg: 'Invalid email. User not found' });
+router.post(
+  '/verify-email',
+  [check('email', 'Please include a valid email').isEmail().normalizeEmail()],
+  async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ status: 'error', errors: errors.array() });
     }
 
-    res.json({ msg: 'Email is valid, you can proceed to reset your password' });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    try {
+      const user = await User.findOne({ email: req.body.email.toLowerCase() });
+      if (!user) {
+        return res.status(400).json({ status: 'error', message: 'User not found' });
+      }
+      res.json({ status: 'success', message: 'Email verified. You may reset your password.' });
+    } catch (err) {
+      next(err);
+    }
   }
-});
+);
 
 /**
  * @swagger
@@ -264,51 +198,47 @@ router.post('/verify-email', [check('email', 'Please include a valid email').isE
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [email, password]
  *             properties:
  *               email:
  *                 type: string
- *                 description: User's email
  *               password:
  *                 type: string
- *                 description: New password for the user
- *             example:
- *               email: john@example.com
- *               password: newpassword123
  *     responses:
  *       200:
  *         description: Password reset successfully
  *       400:
- *         description: Invalid email or validation error
+ *         description: Validation error or user not found
  *       500:
  *         description: Server error
  */
 router.post(
   '/reset-password',
-  [check('email', 'Please include a valid email').isEmail(), check('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 })],
-  async (req, res) => {
+  [
+    check('email', 'Please include a valid email').isEmail().normalizeEmail(),
+    check('password', 'Password must be at least 6 characters').isLength({ min: 6 }),
+  ],
+  async (req, res, next) => {
     const errors = validationResult(req);
-
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({ status: 'error', errors: errors.array() });
     }
 
     const { email, password } = req.body;
 
     try {
-      let user = await User.findOne({ email });
-
+      const user = await User.findOne({ email: email.toLowerCase() });
       if (!user) {
-        return res.status(400).json({ msg: 'Invalid email. User not found' });
+        return res.status(400).json({ status: 'error', message: 'User not found' });
       }
 
-      const salt = await bcrypt.genSalt(10);
+      const salt = await bcrypt.genSalt(12);
       user.password = await bcrypt.hash(password, salt);
       await user.save();
 
-      res.json({ msg: 'Password successfully reset' });
+      res.json({ status: 'success', message: 'Password reset successfully' });
     } catch (err) {
-      console.error(err.message);
-      res.status(500).send('Server error');
+      next(err);
     }
   }
 );

@@ -130,12 +130,12 @@ async function generateOrderNumber() {
  *                   type: string
  *                   description: Description of the server error.
  */
-router.post('/create-order', async (req, res) => {
+router.post('/create-order', async (req, res, next) => {
   try {
     const { items, name, email, shippingAddress, cardNumber, cardName, expiry, cvc } = req.body;
 
     if (!Array.isArray(items) || !items.length || !name || !email || !shippingAddress || !cardNumber || !cardName || !expiry || !cvc) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ status: 'error', message: 'Missing required fields' });
     }
 
     const trimmedEmail = String(email).trim();
@@ -143,11 +143,11 @@ router.post('/create-order', async (req, res) => {
     const trimmedAddress = String(shippingAddress).trim();
 
     if (!trimmedName || !trimmedAddress) {
-      return res.status(400).json({ error: 'Name and shipping address are required.' });
+      return res.status(400).json({ status: 'error', message: 'Name and shipping address are required.' });
     }
 
     if (!emailRegex.test(trimmedEmail)) {
-      return res.status(400).json({ error: 'Invalid email format' });
+      return res.status(400).json({ status: 'error', message: 'Invalid email format' });
     }
 
     const sanitizedCardNumber = String(cardNumber).replace(/\s+/g, '');
@@ -156,19 +156,19 @@ router.post('/create-order', async (req, res) => {
     const trimmedCardName = String(cardName).trim();
 
     if (!trimmedCardName) {
-      return res.status(400).json({ error: 'Name on card is required.' });
+      return res.status(400).json({ status: 'error', message: 'Name on card is required.' });
     }
 
     if (!/^\d{12,16}$/.test(sanitizedCardNumber)) {
-      return res.status(400).json({ error: 'Invalid card number' });
+      return res.status(400).json({ status: 'error', message: 'Invalid card number' });
     }
 
     if (!/^(0[1-9]|1[0-2])\/(?:\d{2}|\d{4})$/.test(sanitizedExpiry)) {
-      return res.status(400).json({ error: 'Invalid expiry date' });
+      return res.status(400).json({ status: 'error', message: 'Invalid expiry date' });
     }
 
     if (!/^\d{3,4}$/.test(sanitizedCvc)) {
-      return res.status(400).json({ error: 'Invalid CVC' });
+      return res.status(400).json({ status: 'error', message: 'Invalid CVC' });
     }
 
     const normalizedItems = [];
@@ -177,7 +177,7 @@ router.post('/create-order', async (req, res) => {
       const quantity = Number.isInteger(item?.quantity) && item.quantity > 0 ? item.quantity : 1;
 
       if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
-        return res.status(400).json({ error: 'Invalid product reference in order payload.' });
+        return res.status(400).json({ status: 'error', message: 'Invalid product reference in order payload.' });
       }
 
       normalizedItems.push({
@@ -190,7 +190,7 @@ router.post('/create-order', async (req, res) => {
     const products = await Product.find({ _id: { $in: productIds } }).lean();
 
     if (products.length !== productIds.length) {
-      return res.status(400).json({ error: 'One or more products are no longer available.' });
+      return res.status(400).json({ status: 'error', message: 'One or more products are no longer available.' });
     }
 
     const productMap = new Map(products.map(product => [String(product._id), product]));
@@ -228,6 +228,7 @@ router.post('/create-order', async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 1200));
 
     res.status(201).json({
+      status: 'success',
       message: 'Order created successfully!',
       orderNumber,
       estimatedDelivery,
@@ -236,9 +237,8 @@ router.post('/create-order', async (req, res) => {
       items: orderItems,
       total: orderTotal,
     });
-  } catch (error) {
-    console.error('Error creating order:', error);
-    res.status(500).json({ error: 'Failed to create order' });
+  } catch (err) {
+    next(err);
   }
 });
 
